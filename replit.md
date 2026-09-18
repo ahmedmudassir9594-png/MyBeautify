@@ -1,44 +1,54 @@
-# [Project name]
+# Cosmetics E-Commerce Backend
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Spring Boot REST API for a cosmetics catalog, customer accounts, cart, checkout, orders, reviews, inventory, coupons, and admin operations.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- The managed API workflow runs `cd spring-app && mvn spring-boot:run` from `artifacts/api-server` (port 8080, routed at `/api`)
+- `cd artifacts/api-server/spring-app && mvn test` — run the Java unit and integration tests
+- `cd artifacts/api-server/spring-app && mvn -q -DskipTests package` — build the Spring Boot jar
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `JWT_SECRET` or the platform `SESSION_SECRET`; MySQL can be configured with `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD`
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- API: Java 21-compatible Spring Boot 3.5
+- DB: MySQL via Spring Data JPA/Hibernate, with H2 as the local fallback
+- Security: JWT access/refresh tokens, BCrypt, method-level role authorization
+- Documentation: Springdoc OpenAPI/Swagger
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/api-server/spring-app/src/main/java/com/cosmetics/ecommerce/entity` — JPA domain model
+- `artifacts/api-server/spring-app/src/main/java/com/cosmetics/ecommerce/service` — business logic and transactions
+- `artifacts/api-server/spring-app/src/main/java/com/cosmetics/ecommerce/controller` — REST resources
+- `artifacts/api-server/spring-app/src/main/resources/application.yml` — environment-driven runtime configuration
+- `artifacts/api-server/spring-app/README.md` — setup, environment variables, and endpoint summary
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The API uses `/api` as the servlet context path so proxy routing and Swagger share the same public base path.
+- H2 is only a local fallback; setting the DB environment variables uses MySQL without code changes.
+- Checkout snapshots order item names/prices and decrements stock inside one transaction.
+- Payment is behind `PaymentGateway`; the included mock adapter is safe for development and stores no card data.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Customers can register, authenticate, browse/search products, manage addresses/cart/wishlist, apply coupons, place and cancel orders, and review delivered products.
+- Admin/staff roles can manage the catalog, stock, orders, reviews, coupons, and dashboard statistics.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+_No additional user preferences recorded._
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Set a 32+ character `JWT_SECRET` or use the available `SESSION_SECRET` fallback before starting the service.
+- Enable development seed data only with `SEED_DATA=true` and `SEED_DEFAULT_PASSWORD` set.
 
 ## Pointers
 
