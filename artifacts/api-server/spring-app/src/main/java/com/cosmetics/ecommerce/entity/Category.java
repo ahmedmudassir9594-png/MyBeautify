@@ -8,7 +8,8 @@ import java.time.Instant;
 @Entity
 @Table(name = "categories", indexes = @Index(name = "idx_category_name", columnList = "name", unique = true))
 public class Category {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Column(nullable = false, unique = true, length = 120)
     private String name;

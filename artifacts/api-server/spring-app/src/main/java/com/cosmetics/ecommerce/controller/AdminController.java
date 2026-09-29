@@ -24,6 +24,6 @@ public class AdminController {
     @GetMapping("/inventory") public ApiResponse<List<com.cosmetics.ecommerce.dto.CatalogDtos.ProductResponse>> inventory() { return ApiResponse.ok("Inventory fetched successfully.", products.allInventory()); }
     @GetMapping("/inventory/low-stock") public ApiResponse<List<com.cosmetics.ecommerce.dto.CatalogDtos.ProductResponse>> lowStock() { return ApiResponse.ok("Low-stock products fetched successfully.", products.inventory(false)); }
     @GetMapping("/inventory/out-of-stock") public ApiResponse<List<com.cosmetics.ecommerce.dto.CatalogDtos.ProductResponse>> outOfStock() { return ApiResponse.ok("Out-of-stock products fetched successfully.", products.inventory(true)); }
-    @GetMapping("/users") @PreAuthorize("hasRole('ADMIN')") public ApiResponse<List<UserResponse>> users() { return ApiResponse.ok("Users fetched successfully.", users.list()); }
+    @GetMapping("/users") @PreAuthorize("hasRole('ADMIN')") public ApiResponse<PageResponse<UserResponse>> users(@PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) { return ApiResponse.ok("Users fetched successfully.", users.list(pageable)); }
     @PatchMapping("/users/{id}") @PreAuthorize("hasRole('ADMIN')") public ApiResponse<UserResponse> updateUser(@PathVariable Long id, @Valid @RequestBody AdminUserUpdateRequest request) { return ApiResponse.ok("User updated successfully.", users.update(id, request)); }
 }

@@ -3,14 +3,15 @@ package com.cosmetics.ecommerce.service;
 import com.cosmetics.ecommerce.dto.CouponDtos.*;
 import com.cosmetics.ecommerce.entity.Coupon;
 import com.cosmetics.ecommerce.enums.DiscountType;
+import com.cosmetics.ecommerce.dto.PageResponse;
 import com.cosmetics.ecommerce.exception.*;
 import com.cosmetics.ecommerce.repository.CouponRepository;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
-import java.util.List;
 
 @Service
 public class CouponService {
@@ -21,7 +22,7 @@ public class CouponService {
         Coupon coupon = valid(request.code(), request.orderAmount());
         return CouponResponse.from(coupon);
     }
-    public List<CouponResponse> list() { return coupons.findAll().stream().map(CouponResponse::from).toList(); }
+    public PageResponse<CouponResponse> list(Pageable pageable) { return PageResponse.from(coupons.findAll(pageable).map(CouponResponse::from)); }
     @Transactional public CouponResponse create(CouponRequest r) {
         if (coupons.findByCodeIgnoreCase(r.code()).isPresent()) throw new DuplicateResourceException("Coupon code is already in use.");
         Coupon c = new Coupon(r.code().trim().toUpperCase(), r.discountType(), r.discountValue(), r.startDate(), r.expiryDate());

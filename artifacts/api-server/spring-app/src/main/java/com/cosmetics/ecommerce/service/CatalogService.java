@@ -1,21 +1,33 @@
 package com.cosmetics.ecommerce.service;
 
 import com.cosmetics.ecommerce.dto.CatalogDtos.*;
+import com.cosmetics.ecommerce.dto.PageResponse;
 import com.cosmetics.ecommerce.entity.*;
 import com.cosmetics.ecommerce.exception.*;
 import com.cosmetics.ecommerce.repository.*;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
 public class CatalogService {
-    private final CategoryRepository categories; private final BrandRepository brands;
+    private final CategoryRepository categories;
+    private final BrandRepository brands;
+
     public CatalogService(CategoryRepository categories, BrandRepository brands) { this.categories = categories; this.brands = brands; }
-    public List<CategoryResponse> categories() { return categories.findByActiveTrueOrderByNameAsc().stream().map(CategoryResponse::from).toList(); }
+
+    public PageResponse<CategoryResponse> categories(Pageable pageable) { return PageResponse.from(categories.findByActiveTrueOrderByNameAsc(pageable).map(CategoryResponse::from)); }
+
+    public List<CategoryResponse> getAllCategory() { return  categories.findAll(Sort.by(Sort.Direction.ASC,"id")).stream().map(CategoryResponse::from).toList();}
+
     public CategoryResponse category(Long id) { return CategoryResponse.from(categories.findById(id).orElseThrow(() -> new ResourceNotFoundException("Category not found."))); }
-    public List<BrandResponse> brands() { return brands.findByActiveTrueOrderByNameAsc().stream().map(BrandResponse::from).toList(); }
+
+    public PageResponse<BrandResponse> brands(Pageable pageable) { return PageResponse.from(brands.findByActiveTrueOrderByNameAsc(pageable).map(BrandResponse::from)); }
+
     public BrandResponse brand(Long id) { return BrandResponse.from(brands.findById(id).orElseThrow(() -> new ResourceNotFoundException("Brand not found."))); }
+
     @Transactional public CategoryResponse createCategory(CategoryRequest r) {
         if (categories.existsByNameIgnoreCase(r.name())) throw new DuplicateResourceException("Category name is already in use.");
         Category c = new Category(r.name().trim(), r.description()); c.setImageUrl(r.imageUrl()); if (r.active() != null) c.setActive(r.active());
@@ -38,4 +50,6 @@ public class CatalogService {
         return BrandResponse.from(b);
     }
     @Transactional public void deleteBrand(Long id) { Brand b = brands.findById(id).orElseThrow(() -> new ResourceNotFoundException("Brand not found.")); b.setActive(false); }
+
+
 }

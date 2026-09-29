@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
     private final AuthService auth;
     public AuthController(AuthService auth) { this.auth = auth; }
-    @PostMapping("/register") public ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest request) { return ApiResponse.ok("Registration successful.", auth.register(request)); }
+    @PostMapping("/register") public ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {return ApiResponse.ok("Registration successful.", auth.register(request)); }
     @PostMapping("/login") public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) { return ApiResponse.ok("Login successful.", auth.login(request)); }
     @PostMapping("/refresh-token") public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) { return ApiResponse.ok("Token refreshed.", auth.refresh(request)); }
     @GetMapping("/me") public ApiResponse<UserResponse> me(@AuthenticationPrincipal User user) { return ApiResponse.ok("Profile fetched successfully.", auth.me(user)); }

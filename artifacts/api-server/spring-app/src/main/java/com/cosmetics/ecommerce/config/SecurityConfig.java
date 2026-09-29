@@ -28,7 +28,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/healthz", "/auth/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/products/**", "/categories/**", "/brands/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/products/**", "/categories/**","/categoriesASC/**", "/brands/**").permitAll()
                         .requestMatchers("/admin/**").hasAnyRole("ADMIN", "STAFF")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
