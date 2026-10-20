@@ -1,3 +1,4 @@
+
 package com.cosmetics.ecommerce.service;
 
 import com.cosmetics.ecommerce.dto.*;
@@ -12,7 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.text.Normalizer;
 import java.util.Locale;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @Service
+@Transactional(readOnly = true)
 public class ProductService {
     private final ProductRepository products;
     private final CategoryRepository categories;
@@ -73,6 +77,9 @@ public class ProductService {
     }
 
     private void copy(ProductRequest r, Product p) {
+        if (r.discountPrice() != null && r.discountPrice().compareTo(r.price()) >= 0) {
+            throw new BadRequestException("Discount price must be less than regular price.");
+        }
         p.setDiscountPrice(r.discountPrice()); p.setLowStockThreshold(r.lowStockThreshold()); p.setDescription(r.description());
         p.setShortDescription(r.shortDescription()); p.setImageUrl(r.imageUrl()); p.setActive(r.active() == null || r.active());
         p.setFeatured(Boolean.TRUE.equals(r.featured())); p.setIngredients(r.ingredients()); p.setBenefits(r.benefits());

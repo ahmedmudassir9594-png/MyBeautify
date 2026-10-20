@@ -12,15 +12,52 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.Optional;
 
 @Service
 public class CouponService {
     private final CouponRepository coupons;
-    public CouponService(CouponRepository coupons) { this.coupons = coupons; }
+    private final ReferralService referralService;
+
+    public CouponService(CouponRepository coupons, ReferralService referralService) {
+        this.coupons = coupons;
+        this.referralService = referralService;
+    }
 
     public CouponResponse apply(ApplyCouponRequest request) {
-        Coupon coupon = valid(request.code(), request.orderAmount());
-        return CouponResponse.from(coupon);
+        String cleanCode = request.code().trim();
+        Optional<Coupon> couponOpt = coupons.findByCodeIgnoreCase(cleanCode);
+        if (couponOpt.isPresent()) {
+            Coupon c = couponOpt.get();
+            if (!c.availableAt(Instant.now())) throw new InvalidCouponException("Coupon is expired or unavailable.");
+            if (request.orderAmount().compareTo(c.getMinimumOrderAmount()) < 0) {
+                throw new InvalidCouponException("Order does not meet the coupon minimum of " + c.getMinimumOrderAmount() + ".");
+            }
+            return CouponResponse.from(c);
+        }
+
+        var validation = referralService.validateReferralCode(cleanCode, null);
+        if (validation.valid()) {
+            if (request.orderAmount().compareTo(referralService.getMinimumOrderAmount()) < 0) {
+                throw new InvalidCouponException("Order does not meet the referral minimum order amount of " + referralService.getMinimumOrderAmount() + ".");
+            }
+            return new CouponResponse(
+                    null,
+                    validation.referralCode(),
+                    validation.discountDescription(),
+                    DiscountType.PERCENTAGE,
+                    validation.discountPercent(),
+                    referralService.getMinimumOrderAmount(),
+                    null,
+                    Instant.now().minusSeconds(86400),
+                    Instant.now().plusSeconds(86400 * 365),
+                    null,
+                    0,
+                    true
+            );
+        }
+
+        throw new InvalidCouponException("Coupon or referral code is invalid.");
     }
     public PageResponse<CouponResponse> list(Pageable pageable) { return PageResponse.from(coupons.findAll(pageable).map(CouponResponse::from)); }
     @Transactional public CouponResponse create(CouponRequest r) {

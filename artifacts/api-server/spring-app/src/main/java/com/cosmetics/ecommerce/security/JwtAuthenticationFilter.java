@@ -1,5 +1,6 @@
 package com.cosmetics.ecommerce.security;
 
+import com.cosmetics.ecommerce.entity.User;
 import com.cosmetics.ecommerce.repository.UserRepository;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
@@ -29,13 +30,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(header) && header.startsWith("Bearer ")) {
             String token = header.substring(7);
             try {
-                String email = jwtService.subject(token);
-                if (SecurityContextHolder.getContext().getAuthentication() == null) {
-                    userRepository.findByEmailIgnoreCase(email).filter(user -> jwtService.isValid(token, user)).ifPresent(user -> {
-                        var authentication = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        SecurityContextHolder.getContext().setAuthentication(authentication);
-                    });
+                if (jwtService.isAccessToken(token)) {
+                    String email = jwtService.subject(token);
+                    if (SecurityContextHolder.getContext().getAuthentication() == null) {
+                        userRepository.findByEmailIgnoreCase(email)
+                                .filter(User::isEnabled)
+                                .filter(user -> jwtService.isValid(token, user))
+                                .ifPresent(user -> {
+                                    var authentication = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+                                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                                });
+                    }
                 }
             } catch (RuntimeException ignored) {
                 // Invalid credentials are handled by Spring Security's authorization entry point.

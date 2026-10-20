@@ -16,6 +16,7 @@ public class AuthController {
     public AuthController(AuthService auth) { this.auth = auth; }
     @PostMapping("/register") public ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {return ApiResponse.ok("Registration successful.", auth.register(request)); }
     @PostMapping("/login") public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) { return ApiResponse.ok("Login successful.", auth.login(request)); }
+    @PostMapping("/google") public ApiResponse<AuthResponse> googleLogin(@Valid @RequestBody GoogleAuthRequest request) {return ApiResponse.ok("Google login successful.",auth.googleLogin(request.getCredential()));}
     @PostMapping("/refresh-token") public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) { return ApiResponse.ok("Token refreshed.", auth.refresh(request)); }
     @GetMapping("/me") public ApiResponse<UserResponse> me(@AuthenticationPrincipal User user) { return ApiResponse.ok("Profile fetched successfully.", auth.me(user)); }
     @PutMapping("/me") public ApiResponse<UserResponse> update(@AuthenticationPrincipal User user, @Valid @RequestBody UpdateProfileRequest request) { return ApiResponse.ok("Profile updated successfully.", auth.updateProfile(user, request)); }

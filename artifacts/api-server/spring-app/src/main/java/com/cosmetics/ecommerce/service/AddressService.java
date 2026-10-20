@@ -21,7 +21,19 @@ public class AddressService {
     }
     @Transactional public AddressResponse update(User user, Long id, AddressRequest request) {
         Address a = addresses.findByIdAndUserId(id, user.getId()).orElseThrow(() -> new ResourceNotFoundException("Address not found."));
-        a.setAddressLine2(request.addressLine2()); a.setState(request.state()); a.setAddressType(request.addressType()); a.setDefault(request.isDefault());
+        if (request.isDefault() && !a.isDefault()) {
+            addresses.findByUserIdOrderByIsDefaultDescIdDesc(user.getId()).forEach(existing -> existing.setDefault(false));
+        }
+        a.setFullName(request.fullName());
+        a.setPhoneNumber(request.phoneNumber());
+        a.setAddressLine1(request.addressLine1());
+        a.setAddressLine2(request.addressLine2());
+        a.setCity(request.city());
+        a.setState(request.state());
+        a.setPostalCode(request.postalCode());
+        a.setCountry(request.country());
+        a.setAddressType(request.addressType());
+        a.setDefault(request.isDefault());
         return AddressResponse.from(a);
     }
     @Transactional public void delete(User user, Long id) { addresses.delete(addresses.findByIdAndUserId(id, user.getId()).orElseThrow(() -> new ResourceNotFoundException("Address not found."))); }

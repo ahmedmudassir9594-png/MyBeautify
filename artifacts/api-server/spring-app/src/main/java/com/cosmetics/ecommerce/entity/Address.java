@@ -28,6 +28,14 @@ public class Address {
     public String getAddressLine2() { return addressLine2; } public String getCity() { return city; } public String getState() { return state; }
     public String getPostalCode() { return postalCode; } public String getCountry() { return country; } public AddressType getAddressType() { return addressType; }
     public boolean isDefault() { return isDefault; }
-    public void setAddressLine2(String v) { addressLine2 = v; } public void setState(String v) { state = v; }
-    public void setAddressType(AddressType v) { addressType = v; } public void setDefault(boolean v) { isDefault = v; }
+    public void setFullName(String v) { fullName = v; }
+    public void setPhoneNumber(String v) { phoneNumber = v; }
+    public void setAddressLine1(String v) { addressLine1 = v; }
+    public void setAddressLine2(String v) { addressLine2 = v; }
+    public void setCity(String v) { city = v; }
+    public void setState(String v) { state = v; }
+    public void setPostalCode(String v) { postalCode = v; }
+    public void setCountry(String v) { country = v; }
+    public void setAddressType(AddressType v) { addressType = v; }
+    public void setDefault(boolean v) { isDefault = v; }
 }

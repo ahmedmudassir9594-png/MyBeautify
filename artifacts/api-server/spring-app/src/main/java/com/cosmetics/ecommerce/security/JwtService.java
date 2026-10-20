@@ -29,27 +29,55 @@ public class JwtService {
     }
 
     public String accessToken(User user) {
-        return build(user, accessTokenMinutes * 60);
+        return build(user, accessTokenMinutes * 60, "ACCESS");
     }
 
     public String refreshToken(User user) {
-        return build(user, refreshTokenDays * 24 * 60 * 60);
+        return build(user, refreshTokenDays * 24 * 60 * 60, "REFRESH");
     }
 
-    private String build(User user, long seconds) {
+    private String build(User user, long seconds, String tokenType) {
         Instant now = Instant.now();
-        return Jwts.builder().subject(user.getUsername()).claim("role", user.getRole().name())
-                .issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(seconds)))
-                .signWith(key).compact();
+        return Jwts.builder()
+                .subject(user.getUsername())
+                .claim("role", user.getRole().name())
+                .claim("token_type", tokenType)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(seconds)))
+                .signWith(key)
+                .compact();
     }
 
     public String subject(String token) {
         return parse(token).getPayload().getSubject();
     }
 
+    public String tokenType(String token) {
+        Object type = parse(token).getPayload().get("token_type");
+        return type != null ? type.toString() : null;
+    }
+
+    public boolean isAccessToken(String token) {
+        try {
+            String type = tokenType(token);
+            return type == null || "ACCESS".equalsIgnoreCase(type);
+        } catch (JwtException | IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    public boolean isRefreshToken(String token) {
+        try {
+            return "REFRESH".equalsIgnoreCase(tokenType(token));
+        } catch (JwtException | IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
     public boolean isValid(String token, User user) {
         try {
-            return user.getUsername().equals(subject(token)) && !parse(token).getPayload().getExpiration().before(new Date());
+            Claims claims = parse(token).getPayload();
+            return user.getUsername().equals(claims.getSubject()) && !claims.getExpiration().before(new Date());
         } catch (JwtException | IllegalArgumentException ex) {
             return false;
         }
