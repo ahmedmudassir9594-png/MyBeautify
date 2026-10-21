@@ -52,7 +52,7 @@ class PaginationServiceTest {
     @Test
     void couponServiceReturnsPagedResponse() {
         CouponRepository coupons = Mockito.mock(CouponRepository.class);
-        CouponService service = new CouponService(coupons);
+        com.cosmetics.ecommerce.service.ReferralService referralService = Mockito.mock(com.cosmetics.ecommerce.service.ReferralService.class); CouponService service = new CouponService(coupons, referralService);
         Coupon coupon = new Coupon("SAVE10", DiscountType.PERCENTAGE, new BigDecimal("10.00"), Instant.now(), Instant.now().plusSeconds(3600));
         coupon.setDescription("Test coupon");
         Page<Coupon> page = new PageImpl<>(List.of(coupon), PageRequest.of(0, 10), 1);

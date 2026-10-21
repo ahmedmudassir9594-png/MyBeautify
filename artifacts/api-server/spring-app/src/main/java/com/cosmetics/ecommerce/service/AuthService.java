@@ -1,13 +1,25 @@
 package com.cosmetics.ecommerce.service;
 
-import com.cosmetics.ecommerce.dto.*;
+import com.cosmetics.ecommerce.dto.AuthDtos;
+import com.cosmetics.ecommerce.dto.ProfileDtos.ForgotPasswordRequest;
+import com.cosmetics.ecommerce.dto.ProfileDtos.ResetPasswordRequest;
+import com.cosmetics.ecommerce.dto.ProfileDtos.UpdateProfileRequest;
+import com.cosmetics.ecommerce.dto.UserResponse;
+import com.cosmetics.ecommerce.email.EmailService;
 import com.cosmetics.ecommerce.entity.User;
+import com.cosmetics.ecommerce.enums.AuditAction;
+import com.cosmetics.ecommerce.enums.AuditResult;
 import com.cosmetics.ecommerce.enums.Role;
-import com.cosmetics.ecommerce.exception.*;
+import com.cosmetics.ecommerce.exception.DuplicateResourceException;
+import com.cosmetics.ecommerce.exception.ResourceNotFoundException;
+import com.cosmetics.ecommerce.exception.UnauthorizedException;
+import com.cosmetics.ecommerce.repository.PasswordResetTokenRepository;
 import com.cosmetics.ecommerce.repository.UserRepository;
 import com.cosmetics.ecommerce.security.JwtService;
-import com.cosmetics.ecommerce.repository.PasswordResetTokenRepository;
-import com.cosmetics.ecommerce.dto.ProfileDtos.*;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -15,15 +27,9 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
-import com.cosmetics.ecommerce.email.EmailService;
-import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
-
     private final GoogleTokenService googleTokenService;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -31,9 +37,13 @@ public class AuthService {
     private final PasswordResetTokenRepository resetTokens;
     private final EmailService emailService;
     private final ReferralService referralService;
+    private final AuditLogService auditLogService;
 
-    public AuthService(GoogleTokenService googleTokenService, UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService,
-                       PasswordResetTokenRepository resetTokens, EmailService emailService, ReferralService referralService) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public AuthService(GoogleTokenService googleTokenService, UserRepository userRepository,
+                       PasswordEncoder passwordEncoder, JwtService jwtService,
+                       PasswordResetTokenRepository resetTokens, EmailService emailService,
+                       ReferralService referralService, AuditLogService auditLogService) {
         this.googleTokenService = googleTokenService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -41,6 +51,14 @@ public class AuthService {
         this.resetTokens = resetTokens;
         this.emailService = emailService;
         this.referralService = referralService;
+        this.auditLogService = auditLogService;
+    }
+
+    public AuthService(GoogleTokenService googleTokenService, UserRepository userRepository,
+                       PasswordEncoder passwordEncoder, JwtService jwtService,
+                       PasswordResetTokenRepository resetTokens, EmailService emailService,
+                       ReferralService referralService) {
+        this(googleTokenService, userRepository, passwordEncoder, jwtService, resetTokens, emailService, referralService, null);
     }
 
     @Transactional
@@ -60,24 +78,60 @@ public class AuthService {
         }
 
         emailService.sendWelcome(user.getEmail(), user.getFirstName());
+
+        if (auditLogService != null) {
+            auditLogService.logWithActor(user.getId(), user.getEmail(), user.getRole().name(),
+                    AuditAction.REGISTRATION_SUCCESS, AuditResult.SUCCESS, "USER", String.valueOf(user.getId()),
+                    "Customer registration successful", null, "{\"email\":\"" + user.getEmail() + "\",\"role\":\"" + user.getRole() + "\"}");
+        }
+
         return tokens(user);
     }
 
     public AuthDtos.AuthResponse login(AuthDtos.LoginRequest request) {
-        User user = userRepository.findByEmailIgnoreCase(request.email().trim())
-                .orElseThrow(() -> new UnauthorizedException("Invalid email or password."));
+        String email = request.email() != null ? request.email().trim() : "";
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
+        if (userOpt.isEmpty()) {
+            if (auditLogService != null) {
+                auditLogService.logWithActor(null, email, null,
+                        AuditAction.LOGIN_FAILURE, AuditResult.FAILURE, "USER", null,
+                        "Login failed: User not found", null, null);
+            }
+            throw new UnauthorizedException("Invalid email or password.");
+        }
+        User user = userOpt.get();
         if (!user.isEnabled()) {
+            if (auditLogService != null) {
+                auditLogService.logWithActor(user.getId(), user.getEmail(), user.getRole().name(),
+                        AuditAction.LOGIN_FAILURE, AuditResult.FAILURE, "USER", String.valueOf(user.getId()),
+                        "Login failed: Account deactivated", null, null);
+            }
             throw new UnauthorizedException("This account has been deactivated.");
         }
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            if (auditLogService != null) {
+                auditLogService.logWithActor(user.getId(), user.getEmail(), user.getRole().name(),
+                        AuditAction.LOGIN_FAILURE, AuditResult.FAILURE, "USER", String.valueOf(user.getId()),
+                        "Login failed: Incorrect password", null, null);
+            }
             throw new UnauthorizedException("Invalid email or password.");
         }
+
+        if (auditLogService != null) {
+            auditLogService.logWithActor(user.getId(), user.getEmail(), user.getRole().name(),
+                    AuditAction.LOGIN_SUCCESS, AuditResult.SUCCESS, "USER", String.valueOf(user.getId()),
+                    "User logged in successfully", null, null);
+        }
+
         return tokens(user);
     }
 
     @Transactional
     public AuthDtos.AuthResponse googleLogin(String credential) {
         if (credential == null || credential.isBlank()) {
+            if (auditLogService != null) {
+                auditLogService.logSecurityFailure(AuditAction.LOGIN_FAILURE, null, "Google login failed: Credential is required");
+            }
             throw new UnauthorizedException("Google credential is required.");
         }
 
@@ -86,6 +140,9 @@ public class AuthService {
         try {
             payload = googleTokenService.verify(credential);
         } catch (GeneralSecurityException | IOException | IllegalArgumentException ex) {
+            if (auditLogService != null) {
+                auditLogService.logSecurityFailure(AuditAction.LOGIN_FAILURE, null, "Google login failed: Invalid Google token");
+            }
             throw new UnauthorizedException("Invalid Google credential.");
         }
 
@@ -99,35 +156,41 @@ public class AuthService {
             User user = linkedUser.get();
 
             if (!user.isEnabled()) {
-                throw new UnauthorizedException(
-                        "This account has been deactivated."
-                );
+                if (auditLogService != null) {
+                    auditLogService.logWithActor(user.getId(), user.getEmail(), user.getRole().name(),
+                            AuditAction.LOGIN_FAILURE, AuditResult.FAILURE, "USER", String.valueOf(user.getId()),
+                            "Google login failed: Account is deactivated", null, null);
+                }
+                throw new UnauthorizedException("This account has been deactivated.");
             }
 
+            if (auditLogService != null) {
+                auditLogService.logWithActor(user.getId(), user.getEmail(), user.getRole().name(),
+                        AuditAction.LOGIN_SUCCESS, AuditResult.SUCCESS, "USER", String.valueOf(user.getId()),
+                        "Google login successful", null, null);
+            }
             return tokens(user);
         }
 
         // Never automatically link an existing account by email alone.
-        Optional<User> existingUser =
-                userRepository.findByEmailIgnoreCase(email);
+        Optional<User> existingUser = userRepository.findByEmailIgnoreCase(email);
 
         if (existingUser.isPresent()) {
+            if (auditLogService != null) {
+                auditLogService.logWithActor(existingUser.get().getId(), email, existingUser.get().getRole().name(),
+                        AuditAction.LOGIN_FAILURE, AuditResult.FAILURE, "USER", String.valueOf(existingUser.get().getId()),
+                        "Google login failed: Account already exists with password", null, null);
+            }
             throw new UnauthorizedException(
-                    "An account already exists with this email. " +
-                            "Please sign in using your existing login method."
+                    "An account already exists with this email. Please sign in using your existing login method."
             );
         }
 
         String firstName = googleName(payload, "given_name");
         String lastName = googleName(payload, "family_name");
 
-        if (firstName.isBlank()) {
-            firstName = "Google";
-        }
-
-        if (lastName.isBlank()) {
-            lastName = "User";
-        }
+        if (firstName.isBlank()) firstName = "Google";
+        if (lastName.isBlank()) lastName = "User";
 
         User user = new User(
                 firstName,
@@ -147,13 +210,16 @@ public class AuthService {
 
         userRepository.save(user);
 
+        if (auditLogService != null) {
+            auditLogService.logWithActor(user.getId(), user.getEmail(), user.getRole().name(),
+                    AuditAction.REGISTRATION_SUCCESS, AuditResult.SUCCESS, "USER", String.valueOf(user.getId()),
+                    "Google registration and login successful", null, "{\"email\":\"" + user.getEmail() + "\"}");
+        }
+
         return tokens(user);
     }
 
-    private String googleName(
-            GoogleIdToken.Payload payload,
-            String key
-    ) {
+    private String googleName(GoogleIdToken.Payload payload, String key) {
         Object value = payload.get(key);
         return value instanceof String text ? text.trim() : "";
     }
@@ -172,6 +238,9 @@ public class AuthService {
         }
         User managed = userRepository.findById(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+
+        String prev = "{\"firstName\":\"" + managed.getFirstName() + "\",\"lastName\":\"" + managed.getLastName() + "\"}";
+
         if (request.firstName() != null && !request.firstName().isBlank()) {
             managed.setFirstName(request.firstName().trim());
         }
@@ -187,12 +256,26 @@ public class AuthService {
         if (request.profileImage() != null) {
             managed.setProfileImage(request.profileImage());
         }
+
+        String next = "{\"firstName\":\"" + managed.getFirstName() + "\",\"lastName\":\"" + managed.getLastName() + "\"}";
+
+        if (auditLogService != null) {
+            auditLogService.logWithActor(managed.getId(), managed.getEmail(), managed.getRole().name(),
+                    AuditAction.USER_PROFILE_UPDATE, AuditResult.SUCCESS, "USER", String.valueOf(managed.getId()),
+                    "User profile updated", prev, next);
+        }
+
         return UserResponse.from(managed);
     }
 
     @Transactional
     public void forgotPassword(ForgotPasswordRequest request) {
-        userRepository.findByEmailIgnoreCase(request.email().trim()).ifPresent(user -> {
+        String email = request.email() != null ? request.email().trim() : "";
+        if (auditLogService != null) {
+            auditLogService.logEvent(AuditAction.PASSWORD_RESET_REQUEST, AuditResult.SUCCESS, "USER", null,
+                    "Password reset requested for email: " + email.toLowerCase(), null, null);
+        }
+        userRepository.findByEmailIgnoreCase(email).ifPresent(user -> {
             resetTokens.deleteByUserId(user.getId());
             String token = UUID.randomUUID().toString();
             resetTokens.save(new com.cosmetics.ecommerce.entity.PasswordResetToken(token, user, Instant.now().plus(30, ChronoUnit.MINUTES)));
@@ -202,10 +285,24 @@ public class AuthService {
 
     @Transactional
     public void resetPassword(ResetPasswordRequest request) {
-        var token = resetTokens.findByToken(request.token()).orElseThrow(() -> new UnauthorizedException("Reset token is invalid or expired."));
-        if (token.expired()) throw new UnauthorizedException("Reset token is invalid or expired.");
-        token.getUser().setPassword(passwordEncoder.encode(request.newPassword()));
+        var tokenOpt = resetTokens.findByToken(request.token());
+        if (tokenOpt.isEmpty() || tokenOpt.get().expired()) {
+            if (auditLogService != null) {
+                auditLogService.logSecurityFailure(AuditAction.PASSWORD_RESET_FAILURE, null,
+                        "Password reset failed: Invalid or expired token");
+            }
+            throw new UnauthorizedException("Reset token is invalid or expired.");
+        }
+        var token = tokenOpt.get();
+        User user = token.getUser();
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
         resetTokens.delete(token);
+
+        if (auditLogService != null) {
+            auditLogService.logWithActor(user.getId(), user.getEmail(), user.getRole().name(),
+                    AuditAction.PASSWORD_RESET_SUCCESS, AuditResult.SUCCESS, "USER", String.valueOf(user.getId()),
+                    "Password reset completed successfully", null, null);
+        }
     }
 
     public AuthDtos.AuthResponse refresh(AuthDtos.RefreshTokenRequest request) {

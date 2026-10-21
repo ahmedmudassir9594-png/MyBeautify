@@ -1,9 +1,10 @@
-
 package com.cosmetics.ecommerce.service;
 
 import com.cosmetics.ecommerce.dto.*;
 import com.cosmetics.ecommerce.dto.CatalogDtos.*;
 import com.cosmetics.ecommerce.entity.*;
+import com.cosmetics.ecommerce.enums.AuditAction;
+import com.cosmetics.ecommerce.enums.AuditResult;
 import com.cosmetics.ecommerce.exception.*;
 import com.cosmetics.ecommerce.repository.*;
 import org.springframework.data.domain.*;
@@ -13,17 +14,25 @@ import org.springframework.transaction.annotation.Transactional;
 import java.text.Normalizer;
 import java.util.Locale;
 
-import org.springframework.transaction.annotation.Transactional;
-
 @Service
 @Transactional(readOnly = true)
 public class ProductService {
     private final ProductRepository products;
     private final CategoryRepository categories;
     private final BrandRepository brands;
+    private final AuditLogService auditLogService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ProductService(ProductRepository products, CategoryRepository categories,
+                          BrandRepository brands, AuditLogService auditLogService) {
+        this.products = products;
+        this.categories = categories;
+        this.brands = brands;
+        this.auditLogService = auditLogService;
+    }
 
     public ProductService(ProductRepository products, CategoryRepository categories, BrandRepository brands) {
-        this.products = products; this.categories = categories; this.brands = brands;
+        this(products, categories, brands, null);
     }
 
     public PageResponse<ProductResponse> list(String query, Long categoryId, Long brandId, Boolean featured,
@@ -48,7 +57,17 @@ public class ProductService {
         Category category = categories.findById(request.categoryId()).orElseThrow(() -> new ResourceNotFoundException("Category not found."));
         Product p = new Product(request.name().trim(), uniqueSlug(request.name()), request.sku().trim(), request.price(),
                 request.stockQuantity(), brand, category);
-        copy(request, p); return response(products.save(p));
+        copy(request, p);
+        Product saved = products.save(p);
+
+        if (auditLogService != null) {
+            String state = String.format("{\"name\":\"%s\",\"sku\":\"%s\",\"price\":%s,\"stock\":%d,\"categoryId\":%d,\"brandId\":%d,\"active\":%s}",
+                    saved.getName(), saved.getSku(), saved.getPrice(), saved.getStockQuantity(), category.getId(), brand.getId(), saved.isActive());
+            auditLogService.logEvent(AuditAction.PRODUCT_CREATE, AuditResult.SUCCESS, "PRODUCT", String.valueOf(saved.getId()),
+                    "Product created: " + saved.getName(), null, state);
+        }
+
+        return response(saved);
     }
 
     @Transactional
@@ -56,24 +75,55 @@ public class ProductService {
         Product p = products.findById(id).orElseThrow(() -> new ResourceNotFoundException("Product not found."));
         products.findBySku(request.sku()).filter(existing -> !existing.getId().equals(id))
                 .ifPresent(existing -> { throw new DuplicateResourceException("SKU is already in use."); });
-        p.setName(request.name().trim()); p.setSku(request.sku().trim()); p.setPrice(request.price());
+
+        String prevState = String.format("{\"name\":\"%s\",\"sku\":\"%s\",\"price\":%s,\"discountPrice\":%s,\"stock\":%d,\"active\":%s}",
+                p.getName(), p.getSku(), p.getPrice(), p.getDiscountPrice(), p.getStockQuantity(), p.isActive());
+
+        p.setName(request.name().trim());
+        p.setSku(request.sku().trim());
+        p.setPrice(request.price());
         p.setStockQuantity(request.stockQuantity());
         p.setBrand(brands.findById(request.brandId()).orElseThrow(() -> new ResourceNotFoundException("Brand not found.")));
         p.setCategory(categories.findById(request.categoryId()).orElseThrow(() -> new ResourceNotFoundException("Category not found.")));
-        copy(request, p); return response(p);
+        copy(request, p);
+
+        if (auditLogService != null) {
+            String newState = String.format("{\"name\":\"%s\",\"sku\":\"%s\",\"price\":%s,\"discountPrice\":%s,\"stock\":%d,\"active\":%s}",
+                    p.getName(), p.getSku(), p.getPrice(), p.getDiscountPrice(), p.getStockQuantity(), p.isActive());
+            auditLogService.logEvent(AuditAction.PRODUCT_UPDATE, AuditResult.SUCCESS, "PRODUCT", String.valueOf(p.getId()),
+                    "Product updated: " + p.getName(), prevState, newState);
+        }
+
+        return response(p);
     }
 
     @Transactional
     public void delete(Long id) {
         Product p = products.findById(id).orElseThrow(() -> new ResourceNotFoundException("Product not found."));
+        boolean wasActive = p.isActive();
         p.setActive(false);
+
+        if (auditLogService != null) {
+            auditLogService.logEvent(AuditAction.PRODUCT_DELETE, AuditResult.SUCCESS, "PRODUCT", String.valueOf(p.getId()),
+                    "Product deactivated/archived: " + p.getName(),
+                    "{\"active\":" + wasActive + "}", "{\"active\":false}");
+        }
     }
 
     @Transactional
     public ProductResponse updateStock(Long id, int stock) {
         if (stock < 0) throw new BadRequestException("Stock cannot be negative.");
         Product p = products.findById(id).orElseThrow(() -> new ResourceNotFoundException("Product not found."));
-        p.setStockQuantity(stock); return response(p);
+        int oldStock = p.getStockQuantity();
+        p.setStockQuantity(stock);
+
+        if (auditLogService != null) {
+            auditLogService.logEvent(AuditAction.PRODUCT_STOCK_UPDATE, AuditResult.SUCCESS, "PRODUCT", String.valueOf(p.getId()),
+                    "Stock updated for product " + p.getName() + " from " + oldStock + " to " + stock,
+                    "{\"stockQuantity\":" + oldStock + "}", "{\"stockQuantity\":" + stock + "}");
+        }
+
+        return response(p);
     }
 
     private void copy(ProductRequest r, Product p) {

@@ -23,7 +23,7 @@ google:
 
 spring:
   application:
-    name: beautify-backend
+    name: malkaz-backend
   profiles:
     active: ${SPRING_PROFILE:default}
   servlet:

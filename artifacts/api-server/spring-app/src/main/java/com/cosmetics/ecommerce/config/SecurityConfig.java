@@ -1,9 +1,14 @@
 package com.cosmetics.ecommerce.config;
 
+import com.cosmetics.ecommerce.enums.AuditAction;
 import com.cosmetics.ecommerce.security.JwtAuthenticationFilter;
 import com.cosmetics.ecommerce.repository.UserRepository;
+import com.cosmetics.ecommerce.service.AuditLogService;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -13,23 +18,23 @@ import org.springframework.security.web.*;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.*;
 
-import java.util.Arrays;
-
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.PrintWriter;
+import java.util.Arrays;
 
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final String allowedOrigins;
+    private final ObjectProvider<AuditLogService> auditLogServiceProvider;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-                          @Value("${app.cors.allowed-origins:${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}}") String allowedOrigins) {
+                          @Value("${app.cors.allowed-origins:${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}}") String allowedOrigins,
+                          ObjectProvider<AuditLogService> auditLogServiceProvider) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.allowedOrigins = allowedOrigins;
+        this.auditLogServiceProvider = auditLogServiceProvider;
     }
 
     @Bean
@@ -44,7 +49,7 @@ public class SecurityConfig {
                                 "/healthz",
                                 "/auth/register",
                                 "/auth/login",
-                                "auth/google",
+                                "/auth/google",
                                 "/auth/refresh-token",
                                 "/auth/forgot-password",
                                 "/auth/reset-password",
@@ -54,10 +59,18 @@ public class SecurityConfig {
                                 "/referrals/validate"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/products/**", "/categories/**", "/categoriesASC/**", "/brands/**").permitAll()
+                        .requestMatchers("/admin/audit-logs/**").hasRole("ADMIN")
                         .requestMatchers("/admin/**").hasAnyRole("ADMIN", "STAFF")
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((request, response, authException) -> {
+                            AuditLogService audit = auditLogServiceProvider.getIfAvailable();
+                            if (audit != null) {
+                                try {
+                                    audit.logSecurityFailure(AuditAction.SECURITY_AUTHENTICATION_FAILURE, null,
+                                            "Unauthenticated access attempted on " + request.getRequestURI());
+                                } catch (Exception ignored) {}
+                            }
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                             try (PrintWriter writer = response.getWriter()) {
@@ -65,6 +78,13 @@ public class SecurityConfig {
                             }
                         })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            AuditLogService audit = auditLogServiceProvider.getIfAvailable();
+                            if (audit != null) {
+                                try {
+                                    audit.logSecurityFailure(AuditAction.SECURITY_ACCESS_DENIED, null,
+                                            "Access denied on " + request.getRequestURI());
+                                } catch (Exception ignored) {}
+                            }
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                             try (PrintWriter writer = response.getWriter()) {

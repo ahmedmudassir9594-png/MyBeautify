@@ -43,6 +43,7 @@ class OrderServiceLifecycleTest {
     @Mock private PaymentGateway paymentGateway;
     @Mock private ProductRepository products;
     @Mock private EmailService emailService;
+    @Mock private com.cosmetics.ecommerce.service.ReferralService referralService;
 
     @InjectMocks
     private OrderService orderService;
