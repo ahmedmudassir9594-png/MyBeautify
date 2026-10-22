@@ -132,7 +132,7 @@ public class AuditLogService {
      * List audit logs with pagination and multi-field filtering. (Append-only read operation)
      */
     @Transactional(readOnly = true)
-    public PageResponse<AuditLogResponse> list(Long actorId, AuditAction action, String resourceType,
+    public PageResponse<AuditLogResponse> list(Long actorId, String actorEmail, AuditAction action, String resourceType,
                                                String resourceId, AuditResult result,
                                                Instant startDate, Instant endDate,
                                                String search, Pageable pageable) {
@@ -142,11 +142,40 @@ public class AuditLogService {
             if (actorId != null) {
                 predicates.add(cb.equal(root.get("actorId"), actorId));
             }
+            if (StringUtils.hasText(actorEmail)) {
+                predicates.add(cb.equal(cb.lower(root.get("actorEmail")), actorEmail.trim().toLowerCase()));
+            }
             if (action != null) {
                 predicates.add(cb.equal(root.get("action"), action));
             }
             if (StringUtils.hasText(resourceType)) {
-                predicates.add(cb.equal(cb.lower(root.get("resourceType")), resourceType.trim().toLowerCase()));
+                String rt = resourceType.trim().toLowerCase();
+                if ("catalog".equals(rt) || "product".equals(rt)) {
+                    predicates.add(cb.or(
+                            cb.equal(cb.lower(root.get("resourceType")), "product"),
+                            cb.equal(cb.lower(root.get("resourceType")), "catalog")
+                    ));
+                } else if ("auth".equals(rt) || "security".equals(rt)) {
+                    predicates.add(cb.or(
+                            cb.equal(cb.lower(root.get("resourceType")), "auth"),
+                            cb.equal(cb.lower(root.get("resourceType")), "security"),
+                            cb.like(cb.lower(root.get("action").as(String.class)), "login%"),
+                            cb.like(cb.lower(root.get("action").as(String.class)), "registration%"),
+                            cb.like(cb.lower(root.get("action").as(String.class)), "security%")
+                    ));
+                } else if ("user".equals(rt) || "user_mgmt".equals(rt)) {
+                    predicates.add(cb.or(
+                            cb.equal(cb.lower(root.get("resourceType")), "user"),
+                            cb.like(cb.lower(root.get("action").as(String.class)), "user%")
+                    ));
+                } else if ("order".equals(rt)) {
+                    predicates.add(cb.or(
+                            cb.equal(cb.lower(root.get("resourceType")), "order"),
+                            cb.equal(cb.lower(root.get("resourceType")), "payment")
+                    ));
+                } else {
+                    predicates.add(cb.equal(cb.lower(root.get("resourceType")), rt));
+                }
             }
             if (StringUtils.hasText(resourceId)) {
                 predicates.add(cb.equal(root.get("resourceId"), resourceId.trim()));
@@ -165,7 +194,8 @@ public class AuditLogService {
                 Predicate descMatch = cb.like(cb.lower(root.get("description")), pattern);
                 Predicate emailMatch = cb.like(cb.lower(root.get("actorEmail")), pattern);
                 Predicate resourceMatch = cb.like(cb.lower(root.get("resourceId")), pattern);
-                predicates.add(cb.or(descMatch, emailMatch, resourceMatch));
+                Predicate actionMatch = cb.like(cb.lower(root.get("action").as(String.class)), pattern);
+                predicates.add(cb.or(descMatch, emailMatch, resourceMatch, actionMatch));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -173,6 +203,17 @@ public class AuditLogService {
 
         Page<AuditLogResponse> page = auditLogRepository.findAll(spec, pageable).map(AuditLogResponse::from);
         return PageResponse.from(page);
+    }
+
+    /**
+     * Backward-compatible overload for callers without explicit actorEmail.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<AuditLogResponse> list(Long actorId, AuditAction action, String resourceType,
+                                               String resourceId, AuditResult result,
+                                               Instant startDate, Instant endDate,
+                                               String search, Pageable pageable) {
+        return list(actorId, null, action, resourceType, resourceId, result, startDate, endDate, search, pageable);
     }
 
     /**

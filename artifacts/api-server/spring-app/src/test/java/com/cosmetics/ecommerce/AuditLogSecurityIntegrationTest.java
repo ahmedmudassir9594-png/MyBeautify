@@ -130,4 +130,28 @@ class AuditLogSecurityIntegrationTest {
                 .andExpect(jsonPath("$.data.token").doesNotExist())
                 .andExpect(jsonPath("$.data.secret").doesNotExist());
     }
+
+    @Test
+    @DisplayName("ADMIN query supports frontend filter aliases (category, status, actorEmail) and returns dual-compatibility fields")
+    @WithMockUser(username = "admin@example.com", roles = {"ADMIN"})
+    void adminCanFilterByFrontendAliases() throws Exception {
+        mockMvc.perform(get("/admin/audit-logs")
+                        .param("category", "CATALOG")
+                        .param("status", "SUCCESS")
+                        .param("actorEmail", "admin@example.com"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content", hasSize(1)))
+                // Verify original fields
+                .andExpect(jsonPath("$.data.content[0].resourceType").value("PRODUCT"))
+                .andExpect(jsonPath("$.data.content[0].resourceId").value("101"))
+                .andExpect(jsonPath("$.data.content[0].result").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.content[0].description").value("Product created: Luxury Serum"))
+                // Verify frontend compatibility fields
+                .andExpect(jsonPath("$.data.content[0].category").value("PRODUCT"))
+                .andExpect(jsonPath("$.data.content[0].entityName").value("PRODUCT"))
+                .andExpect(jsonPath("$.data.content[0].entityId").value("101"))
+                .andExpect(jsonPath("$.data.content[0].status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.content[0].details").value("Product created: Luxury Serum"));
+    }
 }

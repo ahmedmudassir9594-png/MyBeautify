@@ -45,4 +45,33 @@ public record AuditLogResponse(
                 log.getTimestamp()
         );
     }
+
+    // Compatibility getters for frontend and API consumer views
+    public String getCategory() {
+        return resourceType != null ? resourceType : "SYSTEM";
+    }
+
+    public String getEntityName() {
+        return resourceType != null ? resourceType : "—";
+    }
+
+    public String getEntityId() {
+        return resourceId;
+    }
+
+    public String getStatus() {
+        return result != null ? result.name() : "SUCCESS";
+    }
+
+    public String getDetails() {
+        return description != null ? description : "—";
+    }
+
+    public String getOldValue() {
+        return previousState;
+    }
+
+    public String getNewValue() {
+        return newState;
+    }
 }
